@@ -299,7 +299,7 @@ let loadError = null;
 let openCards = {};
 let activeTab = 'fornecedores';
 let relatorioSub = 'historico';
-let sendState = { fornecedorId:null, tipo:null, itemId:null, contatoIds:[], canal:null, enviados:{} };
+let sendState = { fornecedorId:null, tipos:[], itensPorTipo:{pasta:null,mensagem:null,orcamento:null}, contatoIds:[], canais:[], enviados:{} };
 let histFiltro = { inicio:'', fim:'' };
 let chartInstances = {};
 let pastaTipo = {};
@@ -408,7 +408,7 @@ async function refreshAndRender(){
   render();
 }
 
-function setTab(t){ activeTab = t; sendState = {fornecedorId:null,tipo:null,itemId:null,contatoIds:[],canal:null,enviados:{}}; render(); }
+function setTab(t){ activeTab = t; sendState = {fornecedorId:null,tipos:[],itensPorTipo:{pasta:null,mensagem:null,orcamento:null},contatoIds:[],canais:[],enviados:{}}; render(); }
 function setRelatorioSub(s){ relatorioSub = s; render(); }
 function toggleCard(id){ openCards[id] = !openCards[id]; render(); }
 
@@ -536,9 +536,15 @@ async function salvarMeuWhatsapp(){
 }
 
 // ---------- Envio ----------
-function pickFornecedorEnvio(fid){ sendState.fornecedorId = fid; sendState.tipo=null; sendState.itemId=null; sendState.contatoIds=[]; sendState.canal=null; sendState.enviados={}; render(); }
-function pickTipoEnvio(tipo){ sendState.tipo = tipo; sendState.itemId=null; sendState.contatoIds=[]; sendState.canal=null; sendState.enviados={}; render(); }
-function pickItemEnvio(id){ sendState.itemId = id; sendState.contatoIds=[]; sendState.canal=null; sendState.enviados={}; render(); }
+function pickFornecedorEnvio(fid){ sendState.fornecedorId = fid; sendState.tipos=[]; sendState.itensPorTipo={pasta:null,mensagem:null,orcamento:null}; sendState.contatoIds=[]; sendState.canais=[]; sendState.enviados={}; render(); }
+function toggleTipoEnvio(tipo){
+  const idx = sendState.tipos.indexOf(tipo);
+  if(idx>=0){ sendState.tipos.splice(idx,1); sendState.itensPorTipo[tipo]=null; }
+  else { sendState.tipos.push(tipo); }
+  sendState.contatoIds=[]; sendState.canais=[]; sendState.enviados={};
+  render();
+}
+function pickItemEnvio(tipo, id){ sendState.itensPorTipo[tipo] = id; sendState.contatoIds=[]; sendState.canais=[]; sendState.enviados={}; render(); }
 function toggleContatoEnvio(id){
   const idx = sendState.contatoIds.indexOf(id);
   if(idx>=0){
@@ -552,68 +558,84 @@ function toggleContatoEnvio(id){
   }
   render();
 }
-function pickCanalEnvio(canal){
-  sendState.canal = canal;
+function toggleCanalEnvio(canal){
+  const idx = sendState.canais.indexOf(canal);
+  if(idx>=0){ sendState.canais.splice(idx,1); }
+  else { sendState.canais.push(canal); }
   sendState.enviados = {};
   render();
 }
-async function marcarEnviado(contatoId){
+async function marcarEnviado(contatoId, canal){
   const f = state.fornecedores[sendState.fornecedorId];
   const contato = state.contatos.find(c=>c.id===contatoId);
-  if(f && contato) await logHist('envio', `Conteúdo de ${f.nome} enviado para ${contato.nome} via ${sendState.canal === 'whatsapp' ? 'WhatsApp' : 'e-mail'}`, sendState.fornecedorId);
-  sendState.enviados[contatoId] = true;
+  if(f && contato) await logHist('envio', `Conteúdo de ${f.nome} enviado para ${contato.nome} via ${canal === 'whatsapp' ? 'WhatsApp' : 'e-mail'}`, sendState.fornecedorId);
+  sendState.enviados[contatoId+'_'+canal] = true;
   render();
 }
 
 function buildMensagemEnvio(){
   const f = state.fornecedores[sendState.fornecedorId];
   const fNome = f ? f.nome : '';
-  let corpo = '';
-  if(sendState.tipo === 'pasta'){
-    const p = f.pastas.find(p=>p.id===sendState.itemId);
-    if(p) corpo = `Segue material de ${fNome} — ${p.nome}:\n${p.link}`;
-  } else if(sendState.tipo === 'mensagem'){
-    const m = f.mensagens.find(m=>m.id===sendState.itemId);
-    if(m) corpo = m.texto;
-  } else if(sendState.tipo === 'orcamento'){
-    const o = state.orcamentos.find(o=>o.id===sendState.itemId);
-    if(o) corpo = `Segue orçamento de ${fNome} — ${o.titulo}:\n${o.link}`;
+  const partes = [];
+  if(sendState.tipos.includes('pasta') && sendState.itensPorTipo.pasta){
+    const p = f.pastas.find(p=>p.id===sendState.itensPorTipo.pasta);
+    if(p){
+      if(p.tipo === 'foto'){
+        const rotulo = isPdf(p.link) ? '📄 Toque no link para abrir o PDF' : isVideo(p.link) ? '🎥 Toque no link para assistir ao vídeo' : '📷 Toque no link para ver a imagem';
+        partes.push(`Segue ${fNome} — ${p.nome}:\n${p.link}\n${rotulo}`);
+      } else {
+        partes.push(`Segue material de ${fNome} — ${p.nome}:\n${p.link}`);
+      }
+    }
   }
-  return corpo;
+  if(sendState.tipos.includes('mensagem') && sendState.itensPorTipo.mensagem){
+    const m = f.mensagens.find(m=>m.id===sendState.itensPorTipo.mensagem);
+    if(m) partes.push(m.texto);
+  }
+  if(sendState.tipos.includes('orcamento') && sendState.itensPorTipo.orcamento){
+    const o = state.orcamentos.find(o=>o.id===sendState.itensPorTipo.orcamento);
+    if(o) partes.push(`Segue orçamento de ${fNome} — ${o.titulo}:\n${o.link}`);
+  }
+  return partes.join('\n\n');
 }
 
 function renderFilaEnvio(){
   const corpo = buildMensagemEnvio();
   const f = state.fornecedores[sendState.fornecedorId];
-  if(!corpo || !sendState.canal || !sendState.contatoIds.length) return '';
+  if(!corpo || !sendState.canais.length || !sendState.contatoIds.length) return '';
 
+  const canalLabel = {whatsapp:'WhatsApp', email:'E-mail'};
   const linhas = sendState.contatoIds.map(cid=>{
     const contato = state.contatos.find(c=>c.id===cid);
     if(!contato) return '';
-    const enviado = !!sendState.enviados[cid];
-    let url = '';
-    if(sendState.canal === 'whatsapp'){
-      const numero = (contato.whatsapp||'').replace(/\D/g,'');
-      url = `https://wa.me/${numero}?text=${encodeURIComponent(corpo)}`;
-    } else {
-      const assunto = `${f.nome} — material para ${contato.nome}`;
-      url = `mailto:${encodeURIComponent(contato.email||'')}?subject=${encodeURIComponent(assunto)}&body=${encodeURIComponent(corpo)}`;
-    }
+    const botoes = sendState.canais.map(canal=>{
+      const enviado = !!sendState.enviados[cid+'_'+canal];
+      let url = '';
+      if(canal === 'whatsapp'){
+        const numero = (contato.whatsapp||'').replace(/\D/g,'');
+        url = `https://wa.me/${numero}?text=${encodeURIComponent(corpo)}`;
+      } else {
+        const assunto = `${f.nome} — material para ${contato.nome}`;
+        url = `mailto:${encodeURIComponent(contato.email||'')}?subject=${encodeURIComponent(assunto)}&body=${encodeURIComponent(corpo)}`;
+      }
+      return `<a href="${url}" target="_blank" onclick="marcarEnviado('${cid}','${canal}')"><button class="btn small" style="margin-left:6px;">${enviado?'✅ '+canalLabel[canal]:canalLabel[canal]+' →'}</button></a>`;
+    }).join('');
     return `
-      <div class="list-item" style="${enviado?'opacity:.5;':''}">
-        <span>${enviado?'✅ ':''}${esc(contato.nome)}${contato.empresa?' · '+esc(contato.empresa):''}</span>
-        <a href="${url}" target="_blank" onclick="marcarEnviado('${cid}')"><button class="btn small">${enviado?'Enviar de novo':'Enviar →'}</button></a>
+      <div class="list-item">
+        <span>${esc(contato.nome)}${contato.empresa?' · '+esc(contato.empresa):''}</span>
+        <span>${botoes}</span>
       </div>`;
   }).join('');
 
-  const totalEnviados = sendState.contatoIds.filter(id=>sendState.enviados[id]).length;
+  const totalPares = sendState.contatoIds.length * sendState.canais.length;
+  const totalEnviados = sendState.contatoIds.reduce((s,cid)=> s + sendState.canais.filter(c=>sendState.enviados[cid+'_'+c]).length, 0);
 
-  let out = `<div class="preview">${esc(corpo)}</div>
-    <div class="hint" style="margin:10px 0;color:var(--text-dim);font-size:12px;">Clique em "Enviar" para cada contato, um de cada vez — cada clique abre a mensagem já pronta e individual para aquela pessoa. (${totalEnviados}/${sendState.contatoIds.length} enviados)</div>
+  let out = `
+    <div class="hint" style="margin:10px 0;color:var(--text-dim);font-size:12px;">Clique no botão de cada contato, um de cada vez — cada clique abre a mensagem já pronta e individual para aquela pessoa, naquele canal. (${totalEnviados}/${totalPares} enviados)</div>
     ${linhas}`;
 
   if(state.meuWhatsapp && totalEnviados > 0){
-    const resumo = `📋 Resumo de envio\n\nFornecedor: ${f.nome}\nCanal: ${sendState.canal === 'whatsapp' ? 'WhatsApp' : 'E-mail'}\nData: ${new Date().toLocaleString('pt-BR')}\nEnviado para ${totalEnviados} contato(s):\n${sendState.contatoIds.filter(id=>sendState.enviados[id]).map(id=>{ const c = state.contatos.find(x=>x.id===id); return c ? '- '+c.nome : ''; }).join('\n')}\n\nConteúdo enviado:\n${corpo}`;
+    const resumo = `📋 Resumo de envio\n\nFornecedor: ${f.nome}\nCanal(is): ${sendState.canais.map(c=>canalLabel[c]).join(', ')}\nData: ${new Date().toLocaleString('pt-BR')}\nEnviado para ${sendState.contatoIds.filter(cid=>sendState.canais.some(c=>sendState.enviados[cid+'_'+c])).length} contato(s)\n\nConteúdo enviado:\n${corpo}`;
     const meuNum = state.meuWhatsapp.replace(/\D/g,'');
     const urlResumo = `https://wa.me/${meuNum}?text=${encodeURIComponent(resumo)}`;
     out += `<div class="send-actions">
@@ -819,24 +841,49 @@ function renderEnviar(){
     const f = state.fornecedores[sendState.fornecedorId];
     html += `
     <div class="step">
-      <div><span class="num">2</span><h4>Escolha o conteúdo</h4></div>
+      <div><span class="num">2</span><h4>Escolha o conteúdo (pode marcar mais de um)</h4></div>
       <div class="step-body item-pick">
-        <div class="chip ${sendState.tipo==='pasta'?'sel':''}" onclick="pickTipoEnvio('pasta')">Pasta / anexo</div>
-        <div class="chip ${sendState.tipo==='mensagem'?'sel':''}" onclick="pickTipoEnvio('mensagem')">Mensagem de texto</div>
-        <div class="chip ${sendState.tipo==='orcamento'?'sel':''}" onclick="pickTipoEnvio('orcamento')">Orçamento</div>
+        <div class="chip ${sendState.tipos.includes('pasta')?'sel':''}" onclick="toggleTipoEnvio('pasta')">${sendState.tipos.includes('pasta')?'✓ ':''}Pasta / anexo</div>
+        <div class="chip ${sendState.tipos.includes('mensagem')?'sel':''}" onclick="toggleTipoEnvio('mensagem')">${sendState.tipos.includes('mensagem')?'✓ ':''}Mensagem de texto</div>
+        <div class="chip ${sendState.tipos.includes('orcamento')?'sel':''}" onclick="toggleTipoEnvio('orcamento')">${sendState.tipos.includes('orcamento')?'✓ ':''}Orçamento</div>
       </div>
-      ${sendState.tipo ? `<div class="step-body item-pick" style="margin-top:12px;">
-        ${sendState.tipo==='pasta' ? (f.pastas.length ? f.pastas.map(p=>`<div class="chip ${sendState.itemId===p.id?'sel':''}" onclick="pickItemEnvio('${p.id}')">${esc(p.nome)}</div>`).join('') : '<div class="empty">Nenhuma pasta cadastrada para este fornecedor.</div>') : ''}
-        ${sendState.tipo==='mensagem' ? (f.mensagens.length ? f.mensagens.map(m=>`<div class="chip ${sendState.itemId===m.id?'sel':''}" onclick="pickItemEnvio('${m.id}')">${esc(m.texto.slice(0,40))}${m.texto.length>40?'…':''}</div>`).join('') : '<div class="empty">Nenhuma mensagem cadastrada para este fornecedor.</div>') : ''}
-        ${sendState.tipo==='orcamento' ? (()=>{
+      ${sendState.tipos.includes('pasta') ? `<div class="step-body item-pick" style="margin-top:12px;">
+        ${f.pastas.length ? f.pastas.map(p=>`<div class="chip ${sendState.itensPorTipo.pasta===p.id?'sel':''}" onclick="pickItemEnvio('pasta','${p.id}')">${esc(p.nome)}</div>`).join('') : '<div class="empty">Nenhuma pasta cadastrada para este fornecedor.</div>'}
+      </div>` : ''}
+      ${sendState.tipos.includes('mensagem') ? `<div class="step-body item-pick" style="margin-top:12px;">
+        ${f.mensagens.length ? f.mensagens.map(m=>`<div class="chip ${sendState.itensPorTipo.mensagem===m.id?'sel':''}" onclick="pickItemEnvio('mensagem','${m.id}')">${esc(m.texto.slice(0,40))}${m.texto.length>40?'…':''}</div>`).join('') : '<div class="empty">Nenhuma mensagem cadastrada para este fornecedor.</div>'}
+      </div>` : ''}
+      ${sendState.tipos.includes('orcamento') ? `<div class="step-body item-pick" style="margin-top:12px;">
+        ${(()=>{
             const orcs = state.orcamentos.filter(o=>o.fornecedorId===sendState.fornecedorId);
-            return orcs.length ? orcs.map(o=>`<div class="chip ${sendState.itemId===o.id?'sel':''}" onclick="pickItemEnvio('${o.id}')">${esc(o.titulo)}</div>`).join('') : '<div class="empty">Nenhum orçamento cadastrado para este fornecedor.</div>';
-          })() : ''}
+            return orcs.length ? orcs.map(o=>`<div class="chip ${sendState.itensPorTipo.orcamento===o.id?'sel':''}" onclick="pickItemEnvio('orcamento','${o.id}')">${esc(o.titulo)}</div>`).join('') : '<div class="empty">Nenhum orçamento cadastrado para este fornecedor.</div>';
+          })()}
       </div>` : ''}
     </div>`;
   }
 
-  if(sendState.itemId){
+  const mensagemPronta = sendState.fornecedorId ? buildMensagemEnvio() : '';
+  if(mensagemPronta){
+    const f2 = state.fornecedores[sendState.fornecedorId];
+    const pastaSelecionada = sendState.tipos.includes('pasta') && sendState.itensPorTipo.pasta
+      ? f2.pastas.find(p=>p.id===sendState.itensPorTipo.pasta) : null;
+    const temArquivoEnviado = pastaSelecionada && pastaSelecionada.tipo === 'foto';
+
+    html += `
+    <div class="step">
+      <h4 style="margin:0 0 10px;">Pré-visualização da mensagem</h4>
+      <div class="preview">${esc(mensagemPronta)}</div>
+      ${temArquivoEnviado ? `
+        <div class="hint" style="margin-top:10px;color:var(--text-dim);font-size:12px;">
+          A mensagem já vai com o link para o cliente abrir. Se preferir mandar o arquivo anexado de verdade (em vez de só o link), baixe aqui e anexe manualmente na conversa antes de enviar:
+        </div>
+        <div class="send-actions" style="margin-top:8px;">
+          <a href="${esc(pastaSelecionada.link)}" target="_blank" download="${esc(pastaSelecionada.nome)}"><button class="btn ghost">⬇ Baixar arquivo (opcional)</button></a>
+        </div>` : ''}
+    </div>`;
+  }
+
+  if(mensagemPronta){
     html += `
     <div class="step">
       <div><span class="num">3</span><h4>Escolha os clientes (até 10)</h4></div>
@@ -850,12 +897,12 @@ function renderEnviar(){
   if(sendState.contatoIds.length){
     html += `
     <div class="step">
-      <div><span class="num">4</span><h4>Forma de envio</h4></div>
+      <div><span class="num">4</span><h4>Forma de envio (pode marcar os dois)</h4></div>
       <div class="step-body item-pick">
-        <div class="chip ${sendState.canal==='whatsapp'?'sel':''}" onclick="pickCanalEnvio('whatsapp')">WhatsApp</div>
-        <div class="chip ${sendState.canal==='email'?'sel':''}" onclick="pickCanalEnvio('email')">E-mail</div>
+        <div class="chip ${sendState.canais.includes('whatsapp')?'sel':''}" onclick="toggleCanalEnvio('whatsapp')">${sendState.canais.includes('whatsapp')?'✓ ':''}WhatsApp</div>
+        <div class="chip ${sendState.canais.includes('email')?'sel':''}" onclick="toggleCanalEnvio('email')">${sendState.canais.includes('email')?'✓ ':''}E-mail</div>
       </div>
-      ${sendState.canal ? renderFilaEnvio() : ''}
+      ${sendState.canais.length ? renderFilaEnvio() : ''}
     </div>`;
   }
 
