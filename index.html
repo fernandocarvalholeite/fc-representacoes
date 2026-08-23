@@ -310,6 +310,9 @@ let authChecked = false;
 function esc(s){
   return (s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
+function isPdf(url){
+  return (url||'').toLowerCase().split('?')[0].endsWith('.pdf');
+}
 function fmtMoney(v){
   const n = parseFloat(v)||0;
   return n.toLocaleString('pt-BR', {style:'currency', currency:'BRL'});
@@ -647,19 +650,19 @@ function renderFornecedores(){
           ${data.pastas.length ? data.pastas.map(p=>`
             <div class="list-item">
               <span>
-                ${p.tipo==='foto' ? `<img src="${esc(p.link)}" alt="${esc(p.nome)}" style="width:32px;height:32px;object-fit:cover;border-radius:5px;vertical-align:middle;margin-right:6px;">` : ''}
-                ${esc(p.nome)} ${p.link?`— <a href="${esc(p.link)}" target="_blank">${p.tipo==='foto'?'ver foto':'abrir'}</a>`:''}
+                ${p.tipo==='foto' ? (isPdf(p.link) ? `<span style="margin-right:6px;">📄</span>` : `<img src="${esc(p.link)}" alt="${esc(p.nome)}" style="width:32px;height:32px;object-fit:cover;border-radius:5px;vertical-align:middle;margin-right:6px;">`) : ''}
+                ${esc(p.nome)} ${p.link?`— <a href="${esc(p.link)}" target="_blank">${p.tipo==='foto'?(isPdf(p.link)?'ver PDF':'ver foto'):'abrir'}</a>`:''}
               </span>
               <button class="del" onclick="delPasta('${f.id}','${p.id}')">✕</button>
             </div>`).join('') : '<div class="empty">Nenhuma pasta anexada ainda.</div>'}
           <div class="item-pick" style="margin-top:10px;margin-bottom:4px;">
             <div class="chip ${pastaTipo[f.id]!=='foto'?'sel':''}" onclick="setPastaTipo('${f.id}','link')">🔗 Link</div>
-            <div class="chip ${pastaTipo[f.id]==='foto'?'sel':''}" onclick="setPastaTipo('${f.id}','foto')">📷 Foto</div>
+            <div class="chip ${pastaTipo[f.id]==='foto'?'sel':''}" onclick="setPastaTipo('${f.id}','foto')">📎 Foto/PDF</div>
           </div>
           <div class="inline-form">
             <input class="flex" id="pasta-nome-${f.id}" placeholder="Nome (ex: Catálogo 2026)">
             ${pastaTipo[f.id]==='foto'
-              ? `<input class="flex" type="file" accept="image/*" id="pasta-foto-${f.id}">`
+              ? `<input class="flex" type="file" accept="image/*,application/pdf" id="pasta-foto-${f.id}">`
               : `<input class="flex" id="pasta-link-${f.id}" placeholder="Link (Drive, WeTransfer...)">`}
             <button class="btn" id="pasta-btn-${f.id}" onclick="addPasta('${f.id}')">Adicionar</button>
           </div>
