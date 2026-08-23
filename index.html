@@ -1,0 +1,989 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FC Representações</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#14181c;
+    --surface:#1b2027;
+    --surface-2:#20262e;
+    --border:#2c333c;
+    --text:#e9e6e0;
+    --text-dim:#8b929b;
+    --accent:#c08a45;
+    --accent-dim:#8a642f;
+    --ok:#5aa476;
+    --ok-bg:#1c2620;
+    --warn:#c9973f;
+    --warn-bg:#26221a;
+    --bad:#c06452;
+    --bad-bg:#271e1c;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:'Inter',sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .mono{font-family:'IBM Plex Mono',monospace;}
+  .app{max-width:1000px;margin:0 auto;padding:24px 20px 60px;}
+
+  header.top{
+    display:flex;justify-content:space-between;align-items:flex-end;
+    padding-bottom:20px;margin-bottom:24px;
+    border-bottom:1px solid var(--border);
+  }
+  header.top .brand{
+    font-family:'Space Grotesk',sans-serif;
+    font-weight:700;font-size:22px;letter-spacing:.2px;
+  }
+  header.top .brand span{color:var(--accent);}
+  header.top .tag{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:11px;color:var(--text-dim);
+    text-transform:uppercase;letter-spacing:1.5px;
+  }
+
+  nav.tabs{
+    display:flex;gap:2px;margin-bottom:28px;flex-wrap:wrap;
+    background:var(--surface);border:1px solid var(--border);
+    border-radius:10px;padding:4px;
+  }
+  nav.tabs button{
+    flex:1;min-width:90px;padding:10px 8px;background:transparent;border:none;
+    color:var(--text-dim);font-family:'Inter',sans-serif;font-weight:600;
+    font-size:13px;border-radius:7px;cursor:pointer;transition:.15s;
+  }
+  nav.tabs button.active{background:var(--accent);color:#1a1408;}
+  nav.tabs button:not(.active):hover{background:var(--surface-2);color:var(--text);}
+
+  .subtabs{display:flex;gap:8px;margin-bottom:18px;}
+  .subtabs button{
+    background:transparent;border:1px solid var(--border);color:var(--text-dim);
+    padding:7px 14px;border-radius:20px;font-size:12.5px;font-weight:600;cursor:pointer;
+  }
+  .subtabs button.active{border-color:var(--accent);color:var(--accent);background:var(--surface-2);}
+
+  .card{
+    background:var(--surface);border:1px solid var(--border);
+    border-radius:12px;padding:18px 18px;margin-bottom:14px;
+    position:relative;
+  }
+  .card::before{
+    content:"";position:absolute;top:10px;left:10px;width:10px;height:10px;
+    border-top:2px solid var(--accent-dim);border-left:2px solid var(--accent-dim);
+    opacity:.6;
+  }
+  .card::after{
+    content:"";position:absolute;bottom:10px;right:10px;width:10px;height:10px;
+    border-bottom:2px solid var(--accent-dim);border-right:2px solid var(--accent-dim);
+    opacity:.6;
+  }
+  .card-head{
+    display:flex;justify-content:space-between;align-items:center;
+    cursor:pointer;user-select:none;
+  }
+  .card-head h3{margin:0;font-family:'Space Grotesk',sans-serif;font-size:17px;font-weight:600;}
+  .card-head .ref{font-size:11px;color:var(--text-dim);}
+  .chevron{transition:.2s;color:var(--text-dim);}
+  .card.open .chevron{transform:rotate(180deg);}
+  .card-body{display:none;margin-top:16px;padding-top:16px;border-top:1px dashed var(--border);}
+  .card.open .card-body{display:block;}
+
+  .subsection{margin-bottom:18px;}
+  .subsection h4{
+    font-size:11px;text-transform:uppercase;letter-spacing:1px;
+    color:var(--text-dim);margin:0 0 10px;font-weight:600;
+  }
+  .list-item{
+    display:flex;justify-content:space-between;align-items:center;
+    background:var(--surface-2);border:1px solid var(--border);
+    border-radius:8px;padding:9px 12px;margin-bottom:6px;font-size:13.5px;
+  }
+  .list-item a{color:var(--accent);text-decoration:none;}
+  .list-item a:hover{text-decoration:underline;}
+  .list-item .del{color:var(--text-dim);cursor:pointer;background:none;border:none;font-size:16px;padding:0 4px;}
+  .list-item .del:hover{color:var(--bad);}
+  .msg-item{
+    background:var(--surface-2);border:1px solid var(--border);border-radius:8px;
+    padding:10px 12px;margin-bottom:6px;font-size:13.5px;position:relative;
+  }
+  .msg-item .meta{font-size:10.5px;color:var(--text-dim);margin-top:6px;}
+
+  .inline-form{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;}
+  input,select,textarea{
+    background:var(--bg);border:1px solid var(--border);color:var(--text);
+    padding:9px 11px;border-radius:7px;font-family:'Inter',sans-serif;font-size:13.5px;
+    outline:none;
+  }
+  input:focus,select:focus,textarea:focus{border-color:var(--accent-dim);}
+  textarea{resize:vertical;min-height:60px;width:100%;}
+  input.flex,select.flex{flex:1;min-width:120px;}
+  button.btn{
+    background:var(--accent);color:#1a1408;border:none;padding:9px 16px;
+    border-radius:7px;font-weight:600;font-size:13px;cursor:pointer;font-family:'Inter',sans-serif;
+  }
+  button.btn:hover{background:#d29a52;}
+  button.btn.ghost{background:transparent;border:1px solid var(--border);color:var(--text);}
+  button.btn.ghost:hover{border-color:var(--accent-dim);}
+  button.btn:disabled{opacity:.4;cursor:not-allowed;}
+  button.btn.small{padding:6px 12px;font-size:12px;}
+
+  .badge{
+    font-family:'IBM Plex Mono',monospace;font-size:10.5px;padding:3px 9px;
+    border-radius:20px;text-transform:uppercase;letter-spacing:.5px;font-weight:500;
+  }
+  .badge.confirmado{background:var(--ok-bg);color:var(--ok);}
+  .badge.aguardando{background:var(--warn-bg);color:var(--warn);}
+  .badge.nao_fechado{background:var(--bad-bg);color:var(--bad);}
+
+  .orc-row{
+    display:flex;justify-content:space-between;align-items:center;gap:10px;
+    flex-wrap:wrap;
+  }
+  .orc-info{flex:1;min-width:180px;}
+  .orc-info .tit{font-weight:600;font-size:14px;}
+  .orc-info .sub{font-size:12px;color:var(--text-dim);margin-top:2px;}
+  .status-btns{display:flex;gap:5px;flex-wrap:wrap;align-items:center;}
+  .status-btns button{
+    font-family:'IBM Plex Mono',monospace;font-size:10px;padding:5px 8px;
+    border-radius:6px;border:1px solid var(--border);background:transparent;
+    color:var(--text-dim);cursor:pointer;text-transform:uppercase;
+  }
+  .status-btns button.active.confirmado{background:var(--ok-bg);color:var(--ok);border-color:var(--ok);}
+  .status-btns button.active.aguardando{background:var(--warn-bg);color:var(--warn);border-color:var(--warn);}
+  .status-btns button.active.nao_fechado{background:var(--bad-bg);color:var(--bad);border-color:var(--bad);}
+
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+  .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;}
+  @media(max-width:560px){.grid2,.grid3{grid-template-columns:1fr;}}
+
+  .contato-card{display:flex;justify-content:space-between;align-items:flex-start;}
+  .contato-info .nome{font-weight:600;font-size:14.5px;}
+  .contato-info .empresa{font-size:12.5px;color:var(--accent);margin-top:1px;}
+  .contato-info .details{font-size:12px;color:var(--text-dim);margin-top:6px;font-family:'IBM Plex Mono',monospace;}
+
+  .empty{
+    text-align:center;color:var(--text-dim);font-size:13px;padding:24px 10px;
+    border:1px dashed var(--border);border-radius:10px;
+  }
+
+  .steps{display:flex;flex-direction:column;gap:16px;}
+  .step{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 18px;}
+  .step .num{
+    display:inline-flex;align-items:center;justify-content:center;
+    width:22px;height:22px;border-radius:50%;background:var(--accent);color:#1a1408;
+    font-family:'IBM Plex Mono',monospace;font-size:11px;font-weight:600;margin-right:8px;
+  }
+  .step h4{display:inline;font-family:'Space Grotesk',sans-serif;font-size:14.5px;font-weight:600;}
+  .step-body{margin-top:12px;}
+  .item-pick{
+    display:flex;flex-wrap:wrap;gap:8px;
+  }
+  .item-pick .chip{
+    padding:8px 12px;border:1px solid var(--border);border-radius:8px;
+    font-size:12.5px;cursor:pointer;background:var(--surface-2);
+  }
+  .item-pick .chip.sel{border-color:var(--accent);background:var(--accent-dim);color:#fff;}
+  .preview{
+    background:var(--surface-2);border:1px solid var(--border);border-radius:10px;
+    padding:14px;white-space:pre-wrap;font-size:13px;line-height:1.6;margin-top:10px;
+  }
+  .send-actions{display:flex;gap:10px;margin-top:12px;flex-wrap:wrap;}
+  .send-actions a{text-decoration:none;}
+
+  .loading{text-align:center;color:var(--text-dim);padding:40px;font-family:'IBM Plex Mono',monospace;font-size:12px;}
+  .err-banner{
+    background:var(--bad-bg);border:1px solid var(--bad);color:var(--bad);
+    padding:12px 16px;border-radius:10px;margin-bottom:16px;font-size:13px;
+  }
+
+  .login-wrap{
+    min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;
+  }
+  .login-box{
+    width:100%;max-width:360px;background:var(--surface);border:1px solid var(--border);
+    border-radius:14px;padding:32px 28px;position:relative;
+  }
+  .login-box::before{
+    content:"";position:absolute;top:12px;left:12px;width:12px;height:12px;
+    border-top:2px solid var(--accent-dim);border-left:2px solid var(--accent-dim);
+  }
+  .login-box::after{
+    content:"";position:absolute;bottom:12px;right:12px;width:12px;height:12px;
+    border-bottom:2px solid var(--accent-dim);border-right:2px solid var(--accent-dim);
+  }
+  .login-box .brand{font-family:'Space Grotesk',sans-serif;font-weight:700;font-size:22px;margin-bottom:4px;}
+  .login-box .brand span{color:var(--accent);}
+  .login-box .sub{font-size:12px;color:var(--text-dim);margin-bottom:22px;font-family:'IBM Plex Mono',monospace;text-transform:uppercase;letter-spacing:1px;}
+  .login-box input{width:100%;margin-bottom:10px;}
+  .login-box button{width:100%;margin-top:6px;}
+  .login-box .err{color:var(--bad);font-size:12.5px;margin-top:10px;}
+  .login-box .hint{color:var(--text-dim);font-size:11.5px;margin-top:16px;line-height:1.5;}
+  .topbar-user{display:flex;align-items:center;gap:10px;}
+  .topbar-user .who{font-size:11.5px;color:var(--text-dim);font-family:'IBM Plex Mono',monospace;}
+  .topbar-user button{background:transparent;border:1px solid var(--border);color:var(--text-dim);padding:6px 12px;border-radius:7px;font-size:11.5px;cursor:pointer;}
+  .topbar-user button:hover{border-color:var(--bad);color:var(--bad);}
+
+  details.import-box{
+    background:var(--surface);border:1px solid var(--border);border-radius:12px;
+    padding:14px 18px;margin-bottom:14px;
+  }
+  details.import-box summary{cursor:pointer;font-weight:600;font-size:13.5px;color:var(--accent);}
+  details.import-box .hint{font-size:12px;color:var(--text-dim);margin:10px 0;line-height:1.5;}
+
+  .hist-item{
+    display:flex;gap:12px;padding:10px 0;border-bottom:1px solid var(--border);font-size:13px;
+  }
+  .hist-item:last-child{border-bottom:none;}
+  .hist-item .hdate{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-dim);min-width:110px;}
+  .hist-item .htag{
+    font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--accent);
+    font-family:'IBM Plex Mono',monospace;min-width:80px;
+  }
+
+  .kpi-row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;}
+  .kpi{
+    flex:1;min-width:120px;background:var(--surface);border:1px solid var(--border);
+    border-radius:10px;padding:12px 14px;
+  }
+  .kpi .val{font-family:'Space Grotesk',sans-serif;font-size:22px;font-weight:700;color:var(--accent);}
+  .kpi .lbl{font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px;margin-top:2px;}
+
+  .chart-wrap{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:14px;}
+  .chart-wrap h4{margin:0 0 12px;font-family:'Space Grotesk',sans-serif;font-size:15px;}
+  .fechados-list{margin-top:10px;}
+  .fechados-list .li{
+    display:flex;justify-content:space-between;font-size:12.5px;padding:6px 0;
+    border-bottom:1px dashed var(--border);
+  }
+
+  @media print{
+    body{background:#fff;color:#111;}
+    nav.tabs, .subtabs, .inline-form, button, details.import-box, .send-actions{display:none !important;}
+    .card, .chart-wrap, .kpi{background:#fff;border:1px solid #ccc;box-shadow:none;}
+    .card::before,.card::after{display:none;}
+    .hist-item .htag{color:#333;}
+    canvas{display:none;}
+  }
+  ::selection{background:var(--accent-dim);color:#fff;}
+</style>
+</head>
+<body>
+<div id="root" class="app"><div class="loading">carregando…</div></div>
+
+<script>
+// ---------- Configuração do Supabase ----------
+// Projeto: fernandocarvalholeite's Project (plano gratuito)
+const SUPABASE_URL = 'https://cpkjphodruyxfouirhpd.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_d0HEeWsaqOeZIQKGftlF-Q_B8BUOWWg';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+const FORNECEDORES_BASE = [
+  {id:'matrizes-cardeal', nome:'Matrizes Cardeal'},
+  {id:'engefitas', nome:'Engefitas'},
+  {id:'nopla-metais', nome:'Nopla Metais'},
+  {id:'fc-consultoria', nome:'FC Consultoria'},
+];
+
+let state = null;
+let loadError = null;
+let openCards = {};
+let activeTab = 'fornecedores';
+let relatorioSub = 'historico';
+let sendState = { fornecedorId:null, tipo:null, itemId:null, contatoId:null, canal:null };
+let histFiltro = { inicio:'', fim:'' };
+let chartInstances = {};
+let pastaTipo = {};
+let session = null;
+let loginError = null;
+let authChecked = false;
+
+function esc(s){
+  return (s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function fmtMoney(v){
+  const n = parseFloat(v)||0;
+  return n.toLocaleString('pt-BR', {style:'currency', currency:'BRL'});
+}
+function fmtDateTime(iso){
+  const d = new Date(iso);
+  return d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'});
+}
+
+// ---------- Autenticação ----------
+async function tryLogin(){
+  const email = document.getElementById('login-email').value.trim();
+  const senha = document.getElementById('login-senha').value;
+  const btn = document.getElementById('login-btn');
+  loginError = null;
+  if(!email || !senha){ loginError = 'Preencha e-mail e senha.'; renderLogin(); return; }
+  btn.disabled = true; btn.textContent = 'Entrando...';
+  const { data, error } = await sb.auth.signInWithPassword({ email, password: senha });
+  if(error){
+    loginError = 'E-mail ou senha inválidos.';
+    renderLogin();
+    return;
+  }
+  session = data.session;
+  await refreshAndRender();
+}
+
+async function doLogout(){
+  await sb.auth.signOut();
+  session = null;
+  render();
+}
+
+function renderLogin(){
+  const root = document.getElementById('root');
+  root.innerHTML = `
+    <div class="login-wrap">
+      <div class="login-box">
+        <div class="brand">FC <span>Representações</span></div>
+        <div class="sub">acesso restrito · painel comercial</div>
+        <input id="login-email" type="email" placeholder="E-mail" autocomplete="username" onkeydown="if(event.key==='Enter') tryLogin()">
+        <input id="login-senha" type="password" placeholder="Senha" autocomplete="current-password" onkeydown="if(event.key==='Enter') tryLogin()">
+        <button class="btn" id="login-btn" onclick="tryLogin()">Entrar</button>
+        ${loginError ? `<div class="err">${esc(loginError)}</div>` : ''}
+        <div class="hint">Acesso apenas para usuários cadastrados pela FC Consultoria.</div>
+      </div>
+    </div>
+  `;
+}
+
+// ---------- Camada de dados (Supabase) ----------
+async function logHist(tipo, descricao, fornecedorId){
+  try{
+    await sb.from('fc_historico').insert({ tipo, descricao, fornecedor_id: fornecedorId||null });
+  }catch(e){ console.error('Erro ao salvar histórico', e); }
+}
+
+async function refreshAndRender(){
+  try{
+    const [fRes, pRes, mRes, oRes, cRes, hRes, sRes] = await Promise.all([
+      sb.from('fc_fornecedores').select('*'),
+      sb.from('fc_pastas').select('*').order('created_at', {ascending:true}),
+      sb.from('fc_mensagens').select('*').order('created_at', {ascending:true}),
+      sb.from('fc_orcamentos').select('*').order('created_at', {ascending:true}),
+      sb.from('fc_contatos').select('*').order('created_at', {ascending:true}),
+      sb.from('fc_historico').select('*').order('created_at', {ascending:false}),
+      sb.from('fc_settings').select('*').eq('id','default').maybeSingle(),
+    ]);
+    [fRes,pRes,mRes,oRes,cRes,hRes].forEach(r=>{ if(r.error) throw r.error; });
+
+    const fornecedores = {};
+    FORNECEDORES_BASE.forEach(f=>{ fornecedores[f.id] = { nome:f.nome, pastas:[], mensagens:[] }; });
+    (fRes.data||[]).forEach(f=>{ if(fornecedores[f.id]) fornecedores[f.id].nome = f.nome; });
+    (pRes.data||[]).forEach(p=>{ if(fornecedores[p.fornecedor_id]) fornecedores[p.fornecedor_id].pastas.push({id:p.id, nome:p.nome, link:p.link, tipo:p.tipo||'link'}); });
+    (mRes.data||[]).forEach(m=>{ if(fornecedores[m.fornecedor_id]) fornecedores[m.fornecedor_id].mensagens.push({id:m.id, texto:m.texto, data:m.created_at}); });
+
+    const orcamentos = (oRes.data||[]).map(o=>({ id:o.id, fornecedorId:o.fornecedor_id, titulo:o.titulo, numero:o.numero, valor:o.valor, link:o.link, status:o.status, data:o.created_at }));
+    const contatos = (cRes.data||[]).map(c=>({ id:c.id, nome:c.nome, empresa:c.empresa, whatsapp:c.whatsapp, email:c.email }));
+    const historico = (hRes.data||[]).map(h=>({ id:h.id, tipo:h.tipo, descricao:h.descricao, fornecedorId:h.fornecedor_id, data:h.created_at }));
+    const meuWhatsapp = sRes && sRes.data ? sRes.data.meu_whatsapp : '';
+
+    state = { fornecedores, orcamentos, contatos, historico, meuWhatsapp };
+    loadError = null;
+  }catch(e){
+    console.error('Erro ao carregar dados do Supabase', e);
+    loadError = e.message || 'Falha ao conectar com o banco de dados.';
+    if(!state) state = { fornecedores:{}, orcamentos:[], contatos:[], historico:[] };
+  }
+  render();
+}
+
+function setTab(t){ activeTab = t; sendState = {fornecedorId:null,tipo:null,itemId:null,contatoId:null,canal:null}; render(); }
+function setRelatorioSub(s){ relatorioSub = s; render(); }
+function toggleCard(id){ openCards[id] = !openCards[id]; render(); }
+
+// ---------- Fornecedores actions ----------
+function setPastaTipo(fid, tipo){ pastaTipo[fid] = tipo; render(); }
+
+async function addPasta(fid){
+  const nomeEl = document.getElementById('pasta-nome-'+fid);
+  const nome = nomeEl.value.trim();
+  if(!nome) return;
+  const tipo = pastaTipo[fid] === 'foto' ? 'foto' : 'link';
+  const btn = document.getElementById('pasta-btn-'+fid);
+
+  if(tipo === 'foto'){
+    const fileEl = document.getElementById('pasta-foto-'+fid);
+    const file = fileEl.files[0];
+    if(!file){ alert('Escolha uma foto para enviar.'); return; }
+    btn.disabled = true; btn.textContent = 'Enviando...';
+    try{
+      const ext = file.name.split('.').pop();
+      const path = `${fid}/${Date.now()}-${Math.random().toString(36).slice(2,8)}.${ext}`;
+      const { error: upErr } = await sb.storage.from('fc-anexos').upload(path, file);
+      if(upErr) throw upErr;
+      const { data:pub } = sb.storage.from('fc-anexos').getPublicUrl(path);
+      await sb.from('fc_pastas').insert({ fornecedor_id: fid, nome, link: pub.publicUrl, tipo: 'foto' });
+      await logHist('pasta', `Foto "${nome}" adicionada`, fid);
+    }catch(e){
+      alert('Erro ao enviar a foto: ' + (e.message||e));
+      btn.disabled = false; btn.textContent = 'Adicionar';
+      return;
+    }
+  } else {
+    const linkEl = document.getElementById('pasta-link-'+fid);
+    const link = linkEl.value.trim();
+    await sb.from('fc_pastas').insert({ fornecedor_id: fid, nome, link, tipo: 'link' });
+    await logHist('pasta', `Pasta "${nome}" adicionada`, fid);
+  }
+  nomeEl.value='';
+  await refreshAndRender();
+}
+async function delPasta(fid, id){
+  await sb.from('fc_pastas').delete().eq('id', id);
+  await refreshAndRender();
+}
+async function addMensagem(fid){
+  const el = document.getElementById('msg-texto-'+fid);
+  const texto = el.value.trim();
+  if(!texto) return;
+  await sb.from('fc_mensagens').insert({ fornecedor_id: fid, texto });
+  await logHist('mensagem', `Mensagem salva: "${texto.slice(0,50)}${texto.length>50?'…':''}"`, fid);
+  await refreshAndRender();
+}
+async function delMensagem(fid, id){
+  await sb.from('fc_mensagens').delete().eq('id', id);
+  await refreshAndRender();
+}
+
+// ---------- Orçamentos actions ----------
+async function addOrcamento(){
+  const fid = document.getElementById('orc-fornecedor').value;
+  const titulo = document.getElementById('orc-titulo').value.trim();
+  const link = document.getElementById('orc-link').value.trim();
+  const numero = document.getElementById('orc-numero').value.trim();
+  const valorRaw = document.getElementById('orc-valor').value.trim();
+  const valor = valorRaw ? parseFloat(valorRaw) : null;
+  if(!fid || !titulo) return;
+  await sb.from('fc_orcamentos').insert({ fornecedor_id: fid, titulo, link, numero, valor, status:'aguardando' });
+  await logHist('orcamento', `Orçamento criado: "${titulo}"${numero?' (nº '+numero+')':''}`, fid);
+  await refreshAndRender();
+}
+async function setOrcStatus(id, status){
+  const o = state.orcamentos.find(o=>o.id===id);
+  await sb.from('fc_orcamentos').update({ status }).eq('id', id);
+  if(o){
+    const statusLabel = {confirmado:'Confirmado', aguardando:'Aguardando', nao_fechado:'Não fechado'};
+    await logHist('status', `Orçamento "${o.titulo}" marcado como ${statusLabel[status]}`, o.fornecedorId);
+  }
+  await refreshAndRender();
+}
+async function delOrcamento(id){
+  await sb.from('fc_orcamentos').delete().eq('id', id);
+  await refreshAndRender();
+}
+
+// ---------- Contatos actions ----------
+async function addContato(){
+  const nome = document.getElementById('c-nome').value.trim();
+  const empresa = document.getElementById('c-empresa').value.trim();
+  const whatsapp = document.getElementById('c-whatsapp').value.trim();
+  const email = document.getElementById('c-email').value.trim();
+  if(!nome) return;
+  await sb.from('fc_contatos').insert({ nome, empresa, whatsapp, email });
+  await logHist('contato', `Contato "${nome}" cadastrado`);
+  await refreshAndRender();
+}
+async function delContato(id){
+  await sb.from('fc_contatos').delete().eq('id', id);
+  await refreshAndRender();
+}
+async function importContatos(){
+  const el = document.getElementById('import-textarea');
+  const raw = el.value.trim();
+  if(!raw) return;
+  const linhas = raw.split('\n').map(l=>l.trim()).filter(Boolean);
+  const registros = [];
+  linhas.forEach(linha=>{
+    const partes = linha.split(',').map(p=>p.trim());
+    const [nome, empresa, whatsapp, email] = partes;
+    if(nome) registros.push({ nome, empresa: empresa||'', whatsapp: whatsapp||'', email: email||'' });
+  });
+  if(registros.length){
+    await sb.from('fc_contatos').insert(registros);
+    await logHist('contato', `${registros.length} contato(s) importado(s) em lote`);
+  }
+  await refreshAndRender();
+  alert(`${registros.length} contato(s) importado(s) com sucesso.`);
+}
+
+// ---------- Configurações ----------
+async function salvarMeuWhatsapp(){
+  const val = document.getElementById('meu-whatsapp-input').value.trim();
+  await sb.from('fc_settings').upsert({ id:'default', meu_whatsapp: val });
+  await refreshAndRender();
+}
+
+// ---------- Envio ----------
+function pickFornecedorEnvio(fid){ sendState.fornecedorId = fid; sendState.tipo=null; sendState.itemId=null; render(); }
+function pickTipoEnvio(tipo){ sendState.tipo = tipo; sendState.itemId=null; render(); }
+function pickItemEnvio(id){ sendState.itemId = id; render(); }
+function pickContatoEnvio(id){ sendState.contatoId = id; render(); }
+async function pickCanalEnvio(canal){
+  sendState.canal = canal;
+  const f = state.fornecedores[sendState.fornecedorId];
+  const contato = state.contatos.find(c=>c.id===sendState.contatoId);
+  if(f && contato) await logHist('envio', `Conteúdo de ${f.nome} enviado para ${contato.nome} via ${canal}`, sendState.fornecedorId);
+  render();
+}
+
+function buildMensagemEnvio(){
+  const f = state.fornecedores[sendState.fornecedorId];
+  const fNome = f ? f.nome : '';
+  let corpo = '';
+  if(sendState.tipo === 'pasta'){
+    const p = f.pastas.find(p=>p.id===sendState.itemId);
+    if(p) corpo = `Segue material de ${fNome} — ${p.nome}:\n${p.link}`;
+  } else if(sendState.tipo === 'mensagem'){
+    const m = f.mensagens.find(m=>m.id===sendState.itemId);
+    if(m) corpo = m.texto;
+  } else if(sendState.tipo === 'orcamento'){
+    const o = state.orcamentos.find(o=>o.id===sendState.itemId);
+    if(o) corpo = `Segue orçamento de ${fNome} — ${o.titulo}:\n${o.link}`;
+  }
+  return corpo;
+}
+
+function renderSendLink(){
+  const contato = state.contatos.find(c=>c.id===sendState.contatoId);
+  const corpo = buildMensagemEnvio();
+  if(!contato || !corpo || !sendState.canal) return '';
+  const f = state.fornecedores[sendState.fornecedorId];
+  let out = '';
+  if(sendState.canal === 'whatsapp'){
+    const numero = (contato.whatsapp||'').replace(/\D/g,'');
+    const url = `https://wa.me/${numero}?text=${encodeURIComponent(corpo)}`;
+    out = `<div class="preview">${esc(corpo)}</div>
+      <div class="send-actions">
+        <a href="${url}" target="_blank"><button class="btn">Abrir no WhatsApp →</button></a>
+      </div>`;
+  } else {
+    const assunto = `${f.nome} — material para ${contato.nome}`;
+    const url = `mailto:${encodeURIComponent(contato.email||'')}?subject=${encodeURIComponent(assunto)}&body=${encodeURIComponent(corpo)}`;
+    out = `<div class="preview">${esc(corpo)}</div>
+      <div class="send-actions">
+        <a href="${url}"><button class="btn">Abrir e-mail →</button></a>
+      </div>`;
+  }
+  if(state.meuWhatsapp){
+    const resumo = `📋 Resumo de envio\n\nFornecedor: ${f.nome}\nCliente: ${contato.nome}${contato.empresa?' ('+contato.empresa+')':''}\nCanal: ${sendState.canal === 'whatsapp' ? 'WhatsApp' : 'E-mail'}\nData: ${new Date().toLocaleString('pt-BR')}\n\nConteúdo enviado:\n${corpo}`;
+    const meuNum = state.meuWhatsapp.replace(/\D/g,'');
+    const urlResumo = `https://wa.me/${meuNum}?text=${encodeURIComponent(resumo)}`;
+    out += `<div class="send-actions">
+      <a href="${urlResumo}" target="_blank"><button class="btn ghost">📋 Enviar resumo para meu WhatsApp →</button></a>
+    </div>`;
+  }
+  return out;
+}
+
+// ---------- Render ----------
+function render(){
+  if(!session){
+    renderLogin();
+    return;
+  }
+  const root = document.getElementById('root');
+  root.innerHTML = `
+    <header class="top">
+      <div>
+        <div class="brand">FC <span>Representações</span></div>
+        <div class="tag" style="margin-top:4px;">painel comercial · fornecedores</div>
+      </div>
+      <div class="topbar-user">
+        <span class="who">${esc(session.user.email)}</span>
+        <button onclick="doLogout()">Sair</button>
+      </div>
+    </header>
+    ${loadError ? `<div class="err-banner">Não foi possível conectar ao banco de dados agora (${esc(loadError)}). Verifique sua internet e recarregue a página.</div>` : ''}
+    <nav class="tabs">
+      <button class="${activeTab==='fornecedores'?'active':''}" onclick="setTab('fornecedores')">Fornecedores</button>
+      <button class="${activeTab==='orcamentos'?'active':''}" onclick="setTab('orcamentos')">Orçamentos</button>
+      <button class="${activeTab==='contatos'?'active':''}" onclick="setTab('contatos')">Contatos</button>
+      <button class="${activeTab==='enviar'?'active':''}" onclick="setTab('enviar')">Enviar</button>
+      <button class="${activeTab==='relatorios'?'active':''}" onclick="setTab('relatorios')">Relatórios</button>
+    </nav>
+    <div id="tab-content"></div>
+  `;
+  const content = document.getElementById('tab-content');
+  if(activeTab==='fornecedores') content.innerHTML = renderFornecedores();
+  else if(activeTab==='orcamentos') content.innerHTML = renderOrcamentos();
+  else if(activeTab==='contatos') content.innerHTML = renderContatos();
+  else if(activeTab==='enviar') content.innerHTML = renderEnviar();
+  else if(activeTab==='relatorios'){
+    content.innerHTML = renderRelatorios();
+    if(relatorioSub==='desempenho') setTimeout(drawCharts, 0);
+  }
+}
+
+function renderFornecedores(){
+  return FORNECEDORES_BASE.map((f,idx)=>{
+    const data = state.fornecedores[f.id] || {nome:f.nome, pastas:[], mensagens:[]};
+    const isOpen = !!openCards[f.id];
+    return `
+    <div class="card ${isOpen?'open':''}">
+      <div class="card-head" onclick="toggleCard('${f.id}')">
+        <div>
+          <h3>${esc(f.nome)}</h3>
+          <div class="ref mono">REF-0${idx+1} · ${data.pastas.length} pasta(s) · ${data.mensagens.length} mensagem(ns)</div>
+        </div>
+        <span class="chevron">▾</span>
+      </div>
+      <div class="card-body">
+        <div class="subsection">
+          <h4>Pastas / anexos</h4>
+          ${data.pastas.length ? data.pastas.map(p=>`
+            <div class="list-item">
+              <span>
+                ${p.tipo==='foto' ? `<img src="${esc(p.link)}" alt="${esc(p.nome)}" style="width:32px;height:32px;object-fit:cover;border-radius:5px;vertical-align:middle;margin-right:6px;">` : ''}
+                ${esc(p.nome)} ${p.link?`— <a href="${esc(p.link)}" target="_blank">${p.tipo==='foto'?'ver foto':'abrir'}</a>`:''}
+              </span>
+              <button class="del" onclick="delPasta('${f.id}','${p.id}')">✕</button>
+            </div>`).join('') : '<div class="empty">Nenhuma pasta anexada ainda.</div>'}
+          <div class="item-pick" style="margin-top:10px;margin-bottom:4px;">
+            <div class="chip ${pastaTipo[f.id]!=='foto'?'sel':''}" onclick="setPastaTipo('${f.id}','link')">🔗 Link</div>
+            <div class="chip ${pastaTipo[f.id]==='foto'?'sel':''}" onclick="setPastaTipo('${f.id}','foto')">📷 Foto</div>
+          </div>
+          <div class="inline-form">
+            <input class="flex" id="pasta-nome-${f.id}" placeholder="Nome (ex: Catálogo 2026)">
+            ${pastaTipo[f.id]==='foto'
+              ? `<input class="flex" type="file" accept="image/*" id="pasta-foto-${f.id}">`
+              : `<input class="flex" id="pasta-link-${f.id}" placeholder="Link (Drive, WeTransfer...)">`}
+            <button class="btn" id="pasta-btn-${f.id}" onclick="addPasta('${f.id}')">Adicionar</button>
+          </div>
+        </div>
+        <div class="subsection">
+          <h4>Mensagens de texto</h4>
+          ${data.mensagens.length ? data.mensagens.map(m=>`
+            <div class="msg-item">
+              ${esc(m.texto)}
+              <div class="meta">${new Date(m.data).toLocaleDateString('pt-BR')}
+                <button class="del" style="float:right;" onclick="delMensagem('${f.id}','${m.id}')">✕ remover</button>
+              </div>
+            </div>`).join('') : '<div class="empty">Nenhuma mensagem salva ainda.</div>'}
+          <div class="inline-form" style="flex-direction:column;">
+            <textarea id="msg-texto-${f.id}" placeholder="Escreva uma mensagem padrão para este fornecedor..."></textarea>
+            <button class="btn" style="align-self:flex-start;" onclick="addMensagem('${f.id}')">Salvar mensagem</button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderOrcamentos(){
+  const statusLabel = {confirmado:'Confirmado', aguardando:'Aguardando', nao_fechado:'Não fechado'};
+  const rows = state.orcamentos.slice().reverse().map(o=>{
+    const f = state.fornecedores[o.fornecedorId];
+    return `
+    <div class="card">
+      <div class="orc-row">
+        <div class="orc-info">
+          <div class="tit">${esc(o.titulo)} ${o.numero?`<span class="mono" style="color:var(--text-dim);font-size:11px;">nº ${esc(o.numero)}</span>`:''}</div>
+          <div class="sub mono">${f?esc(f.nome):'—'} ${o.valor?`· ${fmtMoney(o.valor)}`:''} ${o.link?`· <a href="${esc(o.link)}" target="_blank" style="color:var(--accent);">ver anexo</a>`:''} · ${new Date(o.data).toLocaleDateString('pt-BR')}</div>
+        </div>
+        <span class="badge ${o.status}">${statusLabel[o.status]}</span>
+      </div>
+      <div class="status-btns" style="margin-top:10px;">
+        <button class="${o.status==='confirmado'?'active confirmado':''}" onclick="setOrcStatus('${o.id}','confirmado')">Confirmado</button>
+        <button class="${o.status==='aguardando'?'active aguardando':''}" onclick="setOrcStatus('${o.id}','aguardando')">Aguardando</button>
+        <button class="${o.status==='nao_fechado'?'active nao_fechado':''}" onclick="setOrcStatus('${o.id}','nao_fechado')">Não fechado</button>
+        <button style="margin-left:auto;color:var(--bad);" onclick="delOrcamento('${o.id}')">excluir</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  return `
+    <div class="card">
+      <h4 style="margin:0 0 10px;font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--text-dim);">Novo orçamento</h4>
+      <div class="inline-form">
+        <select class="flex" id="orc-fornecedor">
+          ${FORNECEDORES_BASE.map(f=>`<option value="${f.id}">${esc(f.nome)}</option>`).join('')}
+        </select>
+        <input class="flex" id="orc-titulo" placeholder="Título / cliente (ex: Orçamento - Metalúrgica ABC)">
+      </div>
+      <div class="inline-form">
+        <input class="flex" id="orc-numero" placeholder="Número do orçamento (ex: 1024)">
+        <input class="flex" id="orc-valor" type="number" step="0.01" placeholder="Valor (R$)">
+        <input class="flex" id="orc-link" placeholder="Link do orçamento (PDF, Drive...)">
+        <button class="btn" onclick="addOrcamento()">Adicionar</button>
+      </div>
+    </div>
+    ${rows || '<div class="empty">Nenhum orçamento cadastrado ainda.</div>'}
+  `;
+}
+
+function renderContatos(){
+  const rows = state.contatos.slice().reverse().map(c=>`
+    <div class="card contato-card">
+      <div class="contato-info">
+        <div class="nome">${esc(c.nome)}</div>
+        ${c.empresa?`<div class="empresa">${esc(c.empresa)}</div>`:''}
+        <div class="details">${c.whatsapp?`📱 ${esc(c.whatsapp)}`:''} ${c.email?` · ✉ ${esc(c.email)}`:''}</div>
+      </div>
+      <button class="del" onclick="delContato('${c.id}')" style="font-size:18px;">✕</button>
+    </div>`).join('');
+
+  return `
+    <details class="import-box">
+      <summary>Importar vários contatos de uma vez</summary>
+      <div class="hint">
+        Cole uma lista, um contato por linha, no formato:<br>
+        <span class="mono">Nome, Empresa, WhatsApp, E-mail</span><br>
+        Exemplo: <span class="mono">João Silva, Marcenaria Silva, 5511999998888, joao@marcenaria.com</span><br>
+        Empresa, WhatsApp e e-mail são opcionais — mantenha as vírgulas na ordem certa.
+      </div>
+      <textarea id="import-textarea" placeholder="Cole aqui a lista de contatos..." style="min-height:100px;"></textarea>
+      <button class="btn" style="margin-top:8px;" onclick="importContatos()">Importar lista</button>
+    </details>
+    <div class="card">
+      <h4 style="margin:0 0 10px;font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--text-dim);">Novo contato</h4>
+      <div class="grid2">
+        <input id="c-nome" placeholder="Nome do cliente">
+        <input id="c-empresa" placeholder="Empresa">
+        <input id="c-whatsapp" placeholder="WhatsApp (com DDD, ex: 5511999999999)">
+        <input id="c-email" placeholder="E-mail">
+      </div>
+      <button class="btn" style="margin-top:10px;" onclick="addContato()">Salvar contato</button>
+    </div>
+    ${rows || '<div class="empty">Nenhum contato salvo ainda.</div>'}
+  `;
+}
+
+function renderEnviar(){
+  let html = '';
+  html += `
+    <div class="card">
+      <h4 style="margin:0 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--text-dim);">Seu WhatsApp (para receber os resumos de envio)</h4>
+      <div class="inline-form">
+        <input class="flex" id="meu-whatsapp-input" placeholder="Ex: 5511999999999 (com DDD e país)" value="${esc(state.meuWhatsapp||'')}">
+        <button class="btn" onclick="salvarMeuWhatsapp()">Salvar</button>
+      </div>
+    </div>`;
+  html += `<div class="steps">`;
+  html += `
+    <div class="step">
+      <div><span class="num">1</span><h4>Escolha o fornecedor</h4></div>
+      <div class="step-body item-pick">
+        ${FORNECEDORES_BASE.map(f=>`<div class="chip ${sendState.fornecedorId===f.id?'sel':''}" onclick="pickFornecedorEnvio('${f.id}')">${esc(f.nome)}</div>`).join('')}
+      </div>
+    </div>`;
+
+  if(sendState.fornecedorId){
+    const f = state.fornecedores[sendState.fornecedorId];
+    html += `
+    <div class="step">
+      <div><span class="num">2</span><h4>Escolha o conteúdo</h4></div>
+      <div class="step-body item-pick">
+        <div class="chip ${sendState.tipo==='pasta'?'sel':''}" onclick="pickTipoEnvio('pasta')">Pasta / anexo</div>
+        <div class="chip ${sendState.tipo==='mensagem'?'sel':''}" onclick="pickTipoEnvio('mensagem')">Mensagem de texto</div>
+        <div class="chip ${sendState.tipo==='orcamento'?'sel':''}" onclick="pickTipoEnvio('orcamento')">Orçamento</div>
+      </div>
+      ${sendState.tipo ? `<div class="step-body item-pick" style="margin-top:12px;">
+        ${sendState.tipo==='pasta' ? (f.pastas.length ? f.pastas.map(p=>`<div class="chip ${sendState.itemId===p.id?'sel':''}" onclick="pickItemEnvio('${p.id}')">${esc(p.nome)}</div>`).join('') : '<div class="empty">Nenhuma pasta cadastrada para este fornecedor.</div>') : ''}
+        ${sendState.tipo==='mensagem' ? (f.mensagens.length ? f.mensagens.map(m=>`<div class="chip ${sendState.itemId===m.id?'sel':''}" onclick="pickItemEnvio('${m.id}')">${esc(m.texto.slice(0,40))}${m.texto.length>40?'…':''}</div>`).join('') : '<div class="empty">Nenhuma mensagem cadastrada para este fornecedor.</div>') : ''}
+        ${sendState.tipo==='orcamento' ? (()=>{
+            const orcs = state.orcamentos.filter(o=>o.fornecedorId===sendState.fornecedorId);
+            return orcs.length ? orcs.map(o=>`<div class="chip ${sendState.itemId===o.id?'sel':''}" onclick="pickItemEnvio('${o.id}')">${esc(o.titulo)}</div>`).join('') : '<div class="empty">Nenhum orçamento cadastrado para este fornecedor.</div>';
+          })() : ''}
+      </div>` : ''}
+    </div>`;
+  }
+
+  if(sendState.itemId){
+    html += `
+    <div class="step">
+      <div><span class="num">3</span><h4>Escolha o cliente</h4></div>
+      <div class="step-body item-pick">
+        ${state.contatos.length ? state.contatos.map(c=>`<div class="chip ${sendState.contatoId===c.id?'sel':''}" onclick="pickContatoEnvio('${c.id}')">${esc(c.nome)}${c.empresa?' · '+esc(c.empresa):''}</div>`).join('') : '<div class="empty">Cadastre um contato na aba Contatos primeiro.</div>'}
+      </div>
+    </div>`;
+  }
+
+  if(sendState.contatoId){
+    html += `
+    <div class="step">
+      <div><span class="num">4</span><h4>Forma de envio</h4></div>
+      <div class="step-body item-pick">
+        <div class="chip ${sendState.canal==='whatsapp'?'sel':''}" onclick="pickCanalEnvio('whatsapp')">WhatsApp</div>
+        <div class="chip ${sendState.canal==='email'?'sel':''}" onclick="pickCanalEnvio('email')">E-mail</div>
+      </div>
+      ${sendState.canal ? renderSendLink() : ''}
+    </div>`;
+  }
+
+  html += `</div>`;
+  return html;
+}
+
+// ---------- Relatórios: Histórico + Desempenho ----------
+function setHistFiltro(campo, valor){ histFiltro[campo] = valor; render(); }
+function limparHistFiltro(){ histFiltro = {inicio:'', fim:''}; render(); }
+
+function getHistoricoFiltrado(){
+  let items = (state.historico||[]).slice();
+  if(histFiltro.inicio){
+    items = items.filter(h => new Date(h.data) >= new Date(histFiltro.inicio+'T00:00:00'));
+  }
+  if(histFiltro.fim){
+    items = items.filter(h => new Date(h.data) <= new Date(histFiltro.fim+'T23:59:59'));
+  }
+  return items;
+}
+
+function renderRelatorios(){
+  return `
+    <div class="subtabs">
+      <button class="${relatorioSub==='historico'?'active':''}" onclick="setRelatorioSub('historico')">Histórico</button>
+      <button class="${relatorioSub==='desempenho'?'active':''}" onclick="setRelatorioSub('desempenho')">Desempenho</button>
+    </div>
+    ${relatorioSub==='historico' ? renderHistorico() : renderDesempenho()}
+  `;
+}
+
+function renderHistorico(){
+  const items = getHistoricoFiltrado();
+  const tagLabel = {pasta:'pasta', mensagem:'mensagem', orcamento:'orçamento', status:'status', contato:'contato', envio:'envio'};
+  return `
+    <div class="card">
+      <div class="inline-form" style="align-items:center;">
+        <label class="mono" style="font-size:11px;color:var(--text-dim);">DE <input type="date" value="${histFiltro.inicio}" onchange="setHistFiltro('inicio', this.value)"></label>
+        <label class="mono" style="font-size:11px;color:var(--text-dim);">ATÉ <input type="date" value="${histFiltro.fim}" onchange="setHistFiltro('fim', this.value)"></label>
+        <button class="btn ghost small" onclick="limparHistFiltro()">Limpar</button>
+        <button class="btn small" onclick="window.print()">🖨 Imprimir</button>
+        ${state.meuWhatsapp ? `<button class="btn small" style="margin-left:auto;" onclick="enviarResumoWhatsapp()">📋 Resumo por fornecedor → meu WhatsApp</button>` : ''}
+      </div>
+    </div>
+    <div class="card">
+      ${items.length ? items.map(h=>`
+        <div class="hist-item">
+          <div class="hdate">${fmtDateTime(h.data)}</div>
+          <div class="htag">${tagLabel[h.tipo]||h.tipo}</div>
+          <div>${esc(h.descricao)}${h.fornecedorId && state.fornecedores[h.fornecedorId] ? ` <span style="color:var(--text-dim);">— ${esc(state.fornecedores[h.fornecedorId].nome)}</span>` : ''}</div>
+        </div>`).join('') : '<div class="empty">Nenhum evento registrado neste período.</div>'}
+    </div>
+  `;
+}
+
+function enviarResumoWhatsapp(){
+  const items = getHistoricoFiltrado().filter(h=>h.tipo==='envio');
+  const porFornecedor = {};
+  FORNECEDORES_BASE.forEach(f=>{ porFornecedor[f.id] = 0; });
+  items.forEach(h=>{ if(h.fornecedorId && porFornecedor[h.fornecedorId] !== undefined) porFornecedor[h.fornecedorId]++; });
+
+  const periodo = histFiltro.inicio || histFiltro.fim
+    ? `${histFiltro.inicio ? new Date(histFiltro.inicio+'T00:00:00').toLocaleDateString('pt-BR') : 'início'} até ${histFiltro.fim ? new Date(histFiltro.fim+'T00:00:00').toLocaleDateString('pt-BR') : 'hoje'}`
+    : 'todo o período';
+
+  let texto = `📊 Resumo de envios por fornecedor\nPeríodo: ${periodo}\n\n`;
+  FORNECEDORES_BASE.forEach(f=>{
+    texto += `${f.nome}: ${porFornecedor[f.id]} envio(s)\n`;
+  });
+  texto += `\nTotal: ${items.length} envio(s)`;
+
+  const meuNum = state.meuWhatsapp.replace(/\D/g,'');
+  const url = `https://wa.me/${meuNum}?text=${encodeURIComponent(texto)}`;
+  window.open(url, '_blank');
+}
+
+function calcDesempenho(){
+  return FORNECEDORES_BASE.map(f=>{
+    const orcs = state.orcamentos.filter(o=>o.fornecedorId===f.id);
+    const confirmados = orcs.filter(o=>o.status==='confirmado');
+    const aguardando = orcs.filter(o=>o.status==='aguardando');
+    const naoFechados = orcs.filter(o=>o.status==='nao_fechado');
+    const valorFechado = confirmados.reduce((s,o)=>s+(parseFloat(o.valor)||0),0);
+    const taxa = orcs.length ? Math.round((confirmados.length/orcs.length)*100) : 0;
+    return { fornecedor:f, total:orcs.length, confirmados, aguardando, naoFechados, valorFechado, taxa };
+  });
+}
+
+function renderDesempenho(){
+  const dados = calcDesempenho();
+  const totalGeral = dados.reduce((s,d)=>s+d.total,0);
+  const totalFechado = dados.reduce((s,d)=>s+d.confirmados.length,0);
+  const valorGeral = dados.reduce((s,d)=>s+d.valorFechado,0);
+
+  const kpis = `
+    <div class="kpi-row">
+      <div class="kpi"><div class="val">${totalGeral}</div><div class="lbl">Orçamentos totais</div></div>
+      <div class="kpi"><div class="val">${totalFechado}</div><div class="lbl">Fechados</div></div>
+      <div class="kpi"><div class="val">${totalGeral? Math.round((totalFechado/totalGeral)*100):0}%</div><div class="lbl">Taxa de fechamento</div></div>
+      <div class="kpi"><div class="val" style="font-size:18px;">${fmtMoney(valorGeral)}</div><div class="lbl">Valor fechado</div></div>
+    </div>
+  `;
+
+  const chartsHtml = dados.map(d=>`
+    <div class="chart-wrap">
+      <h4>${esc(d.fornecedor.nome)} <span class="mono" style="font-size:11px;color:var(--text-dim);font-weight:400;">— ${d.total} orçamento(s) · ${d.taxa}% fechamento · ${fmtMoney(d.valorFechado)} fechado</span></h4>
+      <canvas id="chart-${d.fornecedor.id}" height="90"></canvas>
+      ${d.confirmados.length ? `
+        <div class="fechados-list">
+          <h4 style="margin-top:14px;">Orçamentos fechados</h4>
+          ${d.confirmados.map(o=>`<div class="li"><span>${o.numero?`nº ${esc(o.numero)} — `:''}${esc(o.titulo)}</span><span class="mono">${fmtMoney(o.valor)}</span></div>`).join('')}
+        </div>` : ''}
+    </div>
+  `).join('');
+
+  return kpis + `<div style="display:flex;justify-content:flex-end;margin-bottom:10px;"><button class="btn small" onclick="window.print()">🖨 Imprimir relatório</button></div>` + chartsHtml;
+}
+
+function drawCharts(){
+  const dados = calcDesempenho();
+  dados.forEach(d=>{
+    const canvas = document.getElementById('chart-'+d.fornecedor.id);
+    if(!canvas || typeof Chart === 'undefined') return;
+    if(chartInstances[d.fornecedor.id]) chartInstances[d.fornecedor.id].destroy();
+    chartInstances[d.fornecedor.id] = new Chart(canvas, {
+      type:'bar',
+      data:{
+        labels:['Confirmado','Aguardando','Não fechado'],
+        datasets:[{
+          data:[d.confirmados.length, d.aguardando.length, d.naoFechados.length],
+          backgroundColor:['#5aa476','#c9973f','#c06452'],
+          borderRadius:6,
+          barThickness:36
+        }]
+      },
+      options:{
+        responsive:true,
+        plugins:{ legend:{display:false} },
+        scales:{
+          y:{ beginAtZero:true, ticks:{ color:'#8b929b', precision:0 }, grid:{ color:'#2c333c' } },
+          x:{ ticks:{ color:'#e9e6e0' }, grid:{ display:false } }
+        }
+      }
+    });
+  });
+}
+
+async function init(){
+  const { data } = await sb.auth.getSession();
+  session = data.session;
+  authChecked = true;
+  if(session){
+    await refreshAndRender();
+  } else {
+    render();
+  }
+  sb.auth.onAuthStateChange((event, newSession)=>{
+    session = newSession;
+    if(!newSession){ render(); }
+  });
+}
+init();
+</script>
+</body>
+</html>
