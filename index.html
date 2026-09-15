@@ -302,7 +302,9 @@ let chartInstances = {};
 let pastaTipo = {};
 let session = null;
 let loginError = null;
+let loginInfo = null;
 let authChecked = false;
+let recoveryMode = false;
 
 function esc(s){
   return (s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -350,6 +352,16 @@ async function tryLogin(){
   await refreshAndRender();
 }
 
+async function pedirRecuperacaoSenha(){
+  const email = document.getElementById('login-email').value.trim();
+  if(!email){ loginError = 'Digite seu e-mail no campo acima antes de clicar em "Esqueci minha senha".'; renderLogin(); return; }
+  loginInfo = null; loginError = null;
+  const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin + window.location.pathname });
+  if(error){ loginError = 'Não foi possível enviar o e-mail de recuperação: ' + error.message; }
+  else { loginInfo = `E-mail de recuperação enviado para ${email}. Abra o link recebido para definir uma nova senha.`; }
+  renderLogin();
+}
+
 async function doLogout(){
   await sb.auth.signOut();
   session = null;
@@ -367,10 +379,47 @@ function renderLogin(){
         <input id="login-senha" type="password" placeholder="Senha" autocomplete="current-password" onkeydown="if(event.key==='Enter') tryLogin()">
         <button class="btn" id="login-btn" onclick="tryLogin()">Entrar</button>
         ${loginError ? `<div class="err">${esc(loginError)}</div>` : ''}
+        ${loginInfo ? `<div class="err" style="color:var(--ok);">${esc(loginInfo)}</div>` : ''}
+        <div class="hint" style="cursor:pointer;color:var(--accent);text-decoration:underline;" onclick="pedirRecuperacaoSenha()">Esqueci minha senha</div>
         <div class="hint">Acesso apenas para usuários cadastrados pela FC Consultoria.</div>
       </div>
     </div>
   `;
+}
+
+function renderRecuperarSenha(){
+  const root = document.getElementById('root');
+  root.innerHTML = `
+    <div class="login-wrap">
+      <div class="login-box">
+        <div class="brand">FC <span>Representações</span></div>
+        <div class="sub">definir nova senha</div>
+        <input id="nova-senha-1" type="password" placeholder="Nova senha" autocomplete="new-password">
+        <input id="nova-senha-2" type="password" placeholder="Confirme a nova senha" autocomplete="new-password">
+        <button class="btn" id="nova-senha-btn" onclick="salvarNovaSenha()">Salvar nova senha</button>
+        ${loginError ? `<div class="err">${esc(loginError)}</div>` : ''}
+      </div>
+    </div>
+  `;
+}
+
+async function salvarNovaSenha(){
+  const s1 = document.getElementById('nova-senha-1').value;
+  const s2 = document.getElementById('nova-senha-2').value;
+  loginError = null;
+  if(!s1 || s1.length < 6){ loginError = 'A senha precisa ter pelo menos 6 caracteres.'; renderRecuperarSenha(); return; }
+  if(s1 !== s2){ loginError = 'As senhas digitadas não são iguais.'; renderRecuperarSenha(); return; }
+  const btn = document.getElementById('nova-senha-btn');
+  btn.disabled = true; btn.textContent = 'Salvando...';
+  const { error } = await sb.auth.updateUser({ password: s1 });
+  if(error){
+    loginError = 'Não foi possível salvar a senha: ' + error.message;
+    renderRecuperarSenha();
+    return;
+  }
+  recoveryMode = false;
+  history.replaceState(null, '', window.location.pathname);
+  await refreshAndRender();
 }
 
 // ---------- Camada de dados (Supabase) ----------
@@ -683,6 +732,10 @@ function renderFilaEnvio(){
 
 // ---------- Render ----------
 function render(){
+  if(recoveryMode){
+    renderRecuperarSenha();
+    return;
+  }
   if(!session){
     renderLogin();
     return;
@@ -1103,12 +1156,18 @@ async function init(){
   const { data } = await sb.auth.getSession();
   session = data.session;
   authChecked = true;
-  if(session){
+  if(session && !recoveryMode){
     await refreshAndRender();
   } else {
     render();
   }
   sb.auth.onAuthStateChange((event, newSession)=>{
+    if(event === 'PASSWORD_RECOVERY'){
+      recoveryMode = true;
+      session = newSession;
+      render();
+      return;
+    }
     session = newSession;
     if(!newSession){ render(); }
   });
