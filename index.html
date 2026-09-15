@@ -287,12 +287,9 @@ const SUPABASE_URL = 'https://cpkjphodruyxfouirhpd.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_d0HEeWsaqOeZIQKGftlF-Q_B8BUOWWg';
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const FORNECEDORES_BASE = [
-  {id:'matrizes-cardeal', nome:'Matrizes Cardeal'},
-  {id:'engefitas', nome:'Engefitas'},
-  {id:'nopla-metais', nome:'Nopla Metais'},
-  {id:'fc-consultoria', nome:'FC Consultoria'},
-];
+// Lista de fornecedores/indústrias agora vive 100% na tabela fc_fornecedores.
+// Os 4 fornecedores originais (Matrizes Cardeal, Engefitas, Nopla Metais, FC Consultoria)
+// foram migrados para lá via SQL — ver instruções enviadas separadamente.
 
 let state = null;
 let loadError = null;
@@ -309,6 +306,15 @@ let authChecked = false;
 
 function esc(s){
   return (s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function slugify(nome){
+  return (nome||'').toString().normalize('NFD').replace(/[\u0300-\u036f]/g,'')
+    .toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'') || 'fornecedor';
+}
+function getFornecedoresList(){
+  return Object.keys(state.fornecedores||{})
+    .map(id=>({ id, nome: state.fornecedores[id].nome }))
+    .sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR'));
 }
 function isPdf(url){
   return (url||'').toLowerCase().split('?')[0].endsWith('.pdf');
@@ -388,8 +394,7 @@ async function refreshAndRender(){
     [fRes,pRes,mRes,oRes,cRes,hRes].forEach(r=>{ if(r.error) throw r.error; });
 
     const fornecedores = {};
-    FORNECEDORES_BASE.forEach(f=>{ fornecedores[f.id] = { nome:f.nome, pastas:[], mensagens:[] }; });
-    (fRes.data||[]).forEach(f=>{ if(fornecedores[f.id]) fornecedores[f.id].nome = f.nome; });
+    (fRes.data||[]).forEach(f=>{ fornecedores[f.id] = { nome:f.nome, pastas:[], mensagens:[] }; });
     (pRes.data||[]).forEach(p=>{ if(fornecedores[p.fornecedor_id]) fornecedores[p.fornecedor_id].pastas.push({id:p.id, nome:p.nome, link:p.link, tipo:p.tipo||'link'}); });
     (mRes.data||[]).forEach(m=>{ if(fornecedores[m.fornecedor_id]) fornecedores[m.fornecedor_id].mensagens.push({id:m.id, texto:m.texto, data:m.created_at}); });
 
@@ -413,6 +418,37 @@ function setRelatorioSub(s){ relatorioSub = s; render(); }
 function toggleCard(id){ openCards[id] = !openCards[id]; render(); }
 
 // ---------- Fornecedores actions ----------
+async function addFornecedor(){
+  const el = document.getElementById('nova-industria-nome');
+  const nome = el.value.trim();
+  if(!nome) return;
+  let id = slugify(nome);
+  if(state.fornecedores[id]){
+    let n = 2;
+    while(state.fornecedores[id+'-'+n]) n++;
+    id = id+'-'+n;
+  }
+  await sb.from('fc_fornecedores').insert({ id, nome });
+  await logHist('fornecedor', `Indústria "${nome}" cadastrada`, id);
+  el.value = '';
+  await refreshAndRender();
+}
+async function delFornecedor(fid){
+  const f = state.fornecedores[fid];
+  if(!f) return;
+  const nPastas = f.pastas.length, nMsgs = f.mensagens.length;
+  const nOrcs = state.orcamentos.filter(o=>o.fornecedorId===fid).length;
+  const aviso = (nPastas||nMsgs||nOrcs)
+    ? `Isso vai apagar "${f.nome}" e junto: ${nPastas} pasta(s), ${nMsgs} mensagem(ns) e ${nOrcs} orçamento(s) vinculados. Não pode ser desfeito. Continuar?`
+    : `Excluir a indústria "${f.nome}"?`;
+  if(!confirm(aviso)) return;
+  await sb.from('fc_pastas').delete().eq('fornecedor_id', fid);
+  await sb.from('fc_mensagens').delete().eq('fornecedor_id', fid);
+  await sb.from('fc_orcamentos').delete().eq('fornecedor_id', fid);
+  await sb.from('fc_fornecedores').delete().eq('id', fid);
+  await logHist('fornecedor', `Indústria "${f.nome}" excluída`);
+  await refreshAndRender();
+}
 function setPastaTipo(fid, tipo){ pastaTipo[fid] = tipo; render(); }
 
 async function addPasta(fid){
@@ -685,7 +721,17 @@ function render(){
 }
 
 function renderFornecedores(){
-  return FORNECEDORES_BASE.map((f,idx)=>{
+  const lista = getFornecedoresList();
+  const addCard = `
+    <div class="card">
+      <h4 style="margin:0 0 10px;font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--text-dim);">Nova indústria / fornecedor</h4>
+      <div class="inline-form">
+        <input class="flex" id="nova-industria-nome" placeholder="Nome da indústria (ex: Ferragens XYZ)" onkeydown="if(event.key==='Enter') addFornecedor()">
+        <button class="btn" onclick="addFornecedor()">Cadastrar</button>
+      </div>
+    </div>`;
+  if(!lista.length) return addCard + '<div class="empty">Nenhuma indústria cadastrada ainda.</div>';
+  return addCard + lista.map((f,idx)=>{
     const data = state.fornecedores[f.id] || {nome:f.nome, pastas:[], mensagens:[]};
     const isOpen = !!openCards[f.id];
     return `
@@ -698,6 +744,7 @@ function renderFornecedores(){
         <span class="chevron">▾</span>
       </div>
       <div class="card-body">
+        <button class="btn ghost small" style="color:var(--bad);border-color:var(--bad);margin-bottom:14px;" onclick="event.stopPropagation(); delFornecedor('${f.id}')">✕ Excluir esta indústria</button>
         <div class="subsection">
           <h4>Pastas / anexos</h4>
           ${data.pastas.length ? data.pastas.map(p=>`
@@ -766,7 +813,7 @@ function renderOrcamentos(){
       <h4 style="margin:0 0 10px;font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--text-dim);">Novo orçamento</h4>
       <div class="inline-form">
         <select class="flex" id="orc-fornecedor">
-          ${FORNECEDORES_BASE.map(f=>`<option value="${f.id}">${esc(f.nome)}</option>`).join('')}
+          ${getFornecedoresList().map(f=>`<option value="${f.id}">${esc(f.nome)}</option>`).join('')}
         </select>
         <input class="flex" id="orc-titulo" placeholder="Título / cliente (ex: Orçamento - Metalúrgica ABC)">
       </div>
@@ -833,7 +880,7 @@ function renderEnviar(){
     <div class="step">
       <div><span class="num">1</span><h4>Escolha o fornecedor</h4></div>
       <div class="step-body item-pick">
-        ${FORNECEDORES_BASE.map(f=>`<div class="chip ${sendState.fornecedorId===f.id?'sel':''}" onclick="pickFornecedorEnvio('${f.id}')">${esc(f.nome)}</div>`).join('')}
+        ${getFornecedoresList().map(f=>`<div class="chip ${sendState.fornecedorId===f.id?'sel':''}" onclick="pickFornecedorEnvio('${f.id}')">${esc(f.nome)}</div>`).join('')}
       </div>
     </div>`;
 
@@ -937,7 +984,7 @@ function renderRelatorios(){
 
 function renderHistorico(){
   const items = getHistoricoFiltrado();
-  const tagLabel = {pasta:'pasta', mensagem:'mensagem', orcamento:'orçamento', status:'status', contato:'contato', envio:'envio'};
+  const tagLabel = {pasta:'pasta', mensagem:'mensagem', orcamento:'orçamento', status:'status', contato:'contato', envio:'envio', fornecedor:'indústria'};
   return `
     <div class="card">
       <div class="inline-form" style="align-items:center;">
@@ -961,8 +1008,9 @@ function renderHistorico(){
 
 function enviarResumoWhatsapp(){
   const items = getHistoricoFiltrado().filter(h=>h.tipo==='envio');
+  const listaFornecedores = getFornecedoresList();
   const porFornecedor = {};
-  FORNECEDORES_BASE.forEach(f=>{ porFornecedor[f.id] = 0; });
+  listaFornecedores.forEach(f=>{ porFornecedor[f.id] = 0; });
   items.forEach(h=>{ if(h.fornecedorId && porFornecedor[h.fornecedorId] !== undefined) porFornecedor[h.fornecedorId]++; });
 
   const periodo = histFiltro.inicio || histFiltro.fim
@@ -970,7 +1018,7 @@ function enviarResumoWhatsapp(){
     : 'todo o período';
 
   let texto = `📊 Resumo de envios por fornecedor\nPeríodo: ${periodo}\n\n`;
-  FORNECEDORES_BASE.forEach(f=>{
+  listaFornecedores.forEach(f=>{
     texto += `${f.nome}: ${porFornecedor[f.id]} envio(s)\n`;
   });
   texto += `\nTotal: ${items.length} envio(s)`;
@@ -981,7 +1029,7 @@ function enviarResumoWhatsapp(){
 }
 
 function calcDesempenho(){
-  return FORNECEDORES_BASE.map(f=>{
+  return getFornecedoresList().map(f=>{
     const orcs = state.orcamentos.filter(o=>o.fornecedorId===f.id);
     const confirmados = orcs.filter(o=>o.status==='confirmado');
     const aguardando = orcs.filter(o=>o.status==='aguardando');
