@@ -296,7 +296,7 @@ let loadError = null;
 let openCards = {};
 let activeTab = 'fornecedores';
 let relatorioSub = 'historico';
-let sendState = { fornecedorId:null, tipos:[], itensPorTipo:{pasta:null,mensagem:null,orcamento:null}, contatoIds:[], canais:[], enviados:{} };
+let sendState = { fornecedorId:null, tipos:[], itensPorTipo:{pasta:null,mensagem:null,orcamento:null}, contatoIds:[], canais:[], enviados:{}, modoFoto:'link' };
 let histFiltro = { inicio:'', fim:'' };
 let chartInstances = {};
 let pastaTipo = {};
@@ -462,7 +462,8 @@ async function refreshAndRender(){
   render();
 }
 
-function setTab(t){ activeTab = t; sendState = {fornecedorId:null,tipos:[],itensPorTipo:{pasta:null,mensagem:null,orcamento:null},contatoIds:[],canais:[],enviados:{}}; render(); }
+function setTab(t){ activeTab = t; sendState = {fornecedorId:null,tipos:[],itensPorTipo:{pasta:null,mensagem:null,orcamento:null},contatoIds:[],canais:[],enviados:{},modoFoto:'link'}; render(); }
+function setModoFoto(modo){ sendState.modoFoto = modo; sendState.enviados = {}; render(); }
 function setRelatorioSub(s){ relatorioSub = s; render(); }
 function toggleCard(id){ openCards[id] = !openCards[id]; render(); }
 
@@ -666,8 +667,12 @@ function buildMensagemEnvio(){
     const p = f.pastas.find(p=>p.id===sendState.itensPorTipo.pasta);
     if(p){
       if(p.tipo === 'foto'){
-        const rotulo = isPdf(p.link) ? '📄 Toque no link para abrir o PDF' : isVideo(p.link) ? '🎥 Toque no link para assistir ao vídeo' : '📷 Toque no link para ver a imagem';
-        partes.push(`Segue ${fNome} — ${p.nome}:\n${p.link}\n${rotulo}`);
+        if(sendState.modoFoto === 'anexo' && !isPdf(p.link) && !isVideo(p.link)){
+          partes.push(`Segue ${fNome} — ${p.nome}`);
+        } else {
+          const rotulo = isPdf(p.link) ? '📄 Toque no link para abrir o PDF' : isVideo(p.link) ? '🎥 Toque no link para assistir ao vídeo' : '📷 Toque no link para ver a imagem';
+          partes.push(`Segue ${fNome} — ${p.nome}:\n${p.link}\n${rotulo}`);
+        }
       } else {
         partes.push(`Segue material de ${fNome} — ${p.nome}:\n${p.link}`);
       }
@@ -881,15 +886,32 @@ function renderOrcamentos(){
   `;
 }
 
+let contatoSelecao = [];
+function toggleSelecaoContato(id){
+  const idx = contatoSelecao.indexOf(id);
+  if(idx>=0){ contatoSelecao.splice(idx,1); }
+  else {
+    if(contatoSelecao.length >= 10){ alert('Você pode selecionar até 10 contatos por vez.'); return; }
+    contatoSelecao.push(id);
+  }
+  render();
+}
+function irParaEnviarComContatos(){
+  sendState = { fornecedorId:null, tipos:[], itensPorTipo:{pasta:null,mensagem:null,orcamento:null}, contatoIds:[...contatoSelecao], canais:[], enviados:{}, modoFoto:'link' };
+  contatoSelecao = [];
+  activeTab = 'enviar';
+  render();
+}
+
 function renderContatos(){
   const rows = state.contatos.slice().reverse().map(c=>`
-    <div class="card contato-card">
+    <div class="card contato-card ${contatoSelecao.includes(c.id)?'sel':''}" onclick="toggleSelecaoContato('${c.id}')" style="cursor:pointer;">
       <div class="contato-info">
-        <div class="nome">${esc(c.nome)}</div>
+        <div class="nome">${contatoSelecao.includes(c.id)?'✓ ':''}${esc(c.nome)}</div>
         ${c.empresa?`<div class="empresa">${esc(c.empresa)}</div>`:''}
         <div class="details">${c.whatsapp?`📱 ${esc(c.whatsapp)}`:''} ${c.email?` · ✉ ${esc(c.email)}`:''}</div>
       </div>
-      <button class="del" onclick="delContato('${c.id}')" style="font-size:18px;">✕</button>
+      <button class="del" onclick="event.stopPropagation(); delContato('${c.id}')" style="font-size:18px;">✕</button>
     </div>`).join('');
 
   return `
@@ -914,6 +936,13 @@ function renderContatos(){
       </div>
       <button class="btn" style="margin-top:10px;" onclick="addContato()">Salvar contato</button>
     </div>
+    ${state.contatos.length ? `<div class="hint" style="margin:4px 0 10px;">Clique em um ou mais contatos abaixo para selecionar quem vai receber material.</div>` : ''}
+    ${contatoSelecao.length ? `
+      <div class="card" style="position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:12px;">
+        <span>${contatoSelecao.length} de 10 selecionado(s)</span>
+        <button class="btn" onclick="irParaEnviarComContatos()">Escolher fornecedor e enviar →</button>
+        <button class="btn ghost" onclick="contatoSelecao=[];render();">Limpar seleção</button>
+      </div>` : ''}
     ${rows || '<div class="empty">Nenhum contato salvo ainda.</div>'}
   `;
 }
@@ -968,17 +997,26 @@ function renderEnviar(){
     const pastaSelecionada = sendState.tipos.includes('pasta') && sendState.itensPorTipo.pasta
       ? f2.pastas.find(p=>p.id===sendState.itensPorTipo.pasta) : null;
     const temArquivoEnviado = pastaSelecionada && pastaSelecionada.tipo === 'foto';
+    const ehImagemDeVerdade = temArquivoEnviado && !isPdf(pastaSelecionada.link) && !isVideo(pastaSelecionada.link);
 
     html += `
     <div class="step">
+      ${ehImagemDeVerdade ? `
+        <h4 style="margin:0 0 8px;">Como quer mandar a foto?</h4>
+        <div class="step-body item-pick" style="margin-bottom:12px;">
+          <div class="chip ${sendState.modoFoto!=='anexo'?'sel':''}" onclick="setModoFoto('link')">${sendState.modoFoto!=='anexo'?'✓ ':''}Link (0 cliques extras)</div>
+          <div class="chip ${sendState.modoFoto==='anexo'?'sel':''}" onclick="setModoFoto('anexo')">${sendState.modoFoto==='anexo'?'✓ ':''}Foto anexada de verdade</div>
+        </div>` : ''}
       <h4 style="margin:0 0 10px;">Pré-visualização da mensagem</h4>
       <div class="preview">${esc(mensagemPronta)}</div>
       ${temArquivoEnviado ? `
         <div class="hint" style="margin-top:10px;color:var(--text-dim);font-size:12px;">
-          A mensagem já vai com o link para o cliente abrir. Se preferir mandar o arquivo anexado de verdade (em vez de só o link), baixe aqui e anexe manualmente na conversa antes de enviar:
+          ${ehImagemDeVerdade && sendState.modoFoto==='anexo'
+            ? 'O WhatsApp não deixa anexar foto automaticamente por link — por isso a mensagem já sai sem o link. Baixe a foto abaixo e anexe ela na conversa antes de mandar:'
+            : 'A mensagem já vai com o link para o cliente abrir. Se preferir mandar o arquivo anexado de verdade (em vez de só o link), baixe aqui e anexe manualmente na conversa antes de enviar:'}
         </div>
         <div class="send-actions" style="margin-top:8px;">
-          <a href="${esc(pastaSelecionada.link)}" target="_blank" download="${esc(pastaSelecionada.nome)}"><button class="btn ghost">⬇ Baixar arquivo (opcional)</button></a>
+          <a href="${esc(pastaSelecionada.link)}" target="_blank" download="${esc(pastaSelecionada.nome)}"><button class="btn ghost">⬇ Baixar arquivo${ehImagemDeVerdade && sendState.modoFoto==='anexo' ? '' : ' (opcional)'}</button></a>
         </div>` : ''}
     </div>`;
   }
